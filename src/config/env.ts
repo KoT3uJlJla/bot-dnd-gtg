@@ -6,7 +6,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   ADMIN_TELEGRAM_IDS: z.string().default(""),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: z.string().default("info")
+  LOG_LEVEL: z.string().default("info"),
+  PORT: z.coerce.number().int().positive().default(3000)
 });
 
 function parseTelegramIds(value: string): bigint[] {
@@ -24,7 +25,8 @@ export const config = {
   databaseUrl: env.DATABASE_URL,
   adminTelegramIds: parseTelegramIds(env.ADMIN_TELEGRAM_IDS),
   nodeEnv: env.NODE_ENV,
-  logLevel: env.LOG_LEVEL
+  logLevel: env.LOG_LEVEL,
+  port: env.PORT
 } as const;
 
 export function isAdminTelegramId(telegramId: bigint): boolean {
