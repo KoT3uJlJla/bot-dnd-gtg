@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CharacterStatus {
+  ALIVE
+  WOUNDED
+  DYING
+  DEAD
+}
+
+enum EventStatus {
+  CREATED
+  REGISTRATION
+  ACT_1
+  ACT_2
+  ACT_3
+  COMBAT
+  SCENE_RESOLUTION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ParticipantMode {
+  UNASSIGNED
+  SOLO
+  SQUAD
+}
+
+enum SquadStatus {
+  OPEN
+  FULL
+  LOCKED
+}
+
+enum DiceRollType {
+  NORMAL
+  ADVANTAGE
+  DISADVANTAGE
+  DEATH_SAVE
+}
+
+enum CombatStatus {
+  ACTIVE
+  WON
+  LOST
+  CANCELLED
+}
+
+enum CombatSide {
+  PLAYER
+  ENEMY
+}
+
+model User {
+  id               Int                @id @default(autoincrement())
+  telegramId       BigInt             @unique
+  username         String?
+  firstName        String?
+  lastName         String?
+  hasStartedBot    Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  characters       Character[]
+  pets             Pet[]
+  inventoryItems   InventoryItem[]
+  eventParticipants EventParticipant[]
+  rewards          Reward[]
+
+  @@index([telegramId])
+  @@map("users")
+}
+
+model AllowedUser {
+  id                Int      @id @default(autoincrement())
+  telegramId        BigInt   @unique
+  isBanned          Boolean  @default(false)
+  note              String?
+  addedByTelegramId BigInt?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([telegramId, isBanned])
+  @@map("allowed_users")
+}
+
+model Character {
+  id                       Int              @id @default(autoincrement())
+  userId                   Int
+  name                     String
+  classKey                 String
+  level                    Int              @default(1)
+  xp                       Int              @default(0)
+  hpCurrent                Int
+  hpMax                    Int
+  manaCurrent              Int
+  manaMax                  Int
+  staminaCurrent           Int
+  staminaMax               Int
+  strength                 Int
+  agility                  Int
+  mind                     Int
+  will                     Int
+  status                   CharacterStatus  @default(ALIVE)
+  freeClassChangeAvailable Boolean          @default(true)
+  deathSaveSuccesses       Int              @default(0)
+  deathSaveFailures        Int              @default(0)
+  coins                    Int              @default(0)
+  eventPoints              Int              @default(0)
+  iceShards                Int              @default(0)
+  activePetId              Int?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  user                     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inventoryItems           InventoryItem[]
+  equippedItems            EquippedItem[]
+  eventParticipants        EventParticipant[]
+  rewards                  Reward[]
+  diceRolls                DiceRoll[]
+  combatEntities           CombatEntity[]
+
+  @@index([userId, status])
+  @@map("characters")
+}
+
+model GameClass {
+  id              Int      @id @default(autoincrement())
+  key             String   @unique
+  name            String
+  description     String
+  role            String
+  domain          String
+  hpMax           Int
+  manaMax         Int
+  staminaMax      Int
+  strength        Int
+  agility         Int
+  mind            Int
+  will            Int
+  abilities       Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("classes")
+}
+
+model Pet {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  characterId  Int?
+  speciesKey   String
+  name         String
+  biome        String
+  bonusType    String
+  bonusValue   Int      @default(1)
+  isActive     Boolean  @default(false)
+  status       String   @default("healthy")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("pets")
+}
+
+model InventoryItem {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  characterId Int?
+  itemKey     String
+  name        String
+  slot        String
+  quantity    Int       @default(1)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  equippedAs  EquippedItem[]
+
+  @@unique([characterId, itemKey])
+  @@index([userId, itemKey])
+  @@map("inventory_items")
+}
+
+model EquippedItem {
+  id              Int           @id @default(autoincrement())
+  characterId     Int
+  inventoryItemId Int?
+  slot            String
+  itemKey         String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  character       Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+
+  @@unique([characterId, slot])
+  @@map("equipped_items")
+}
+
+model GroupChat {
+  id             Int      @id @default(autoincrement())
+  telegramChatId BigInt   @unique
+  title          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  events         Event[]
+
+  @@map("group_chats")
+}
+
+model Event {
+  id                  Int                @id @default(autoincrement())
+  groupChatId         Int
+  moduleKey           String
+  title               String
+  status              EventStatus        @default(REGISTRATION)
+  act                 Int                @default(1)
+  sceneIndex          Int                @default(0)
+  progress            Int                @default(0)
+  currentEnemyKey     String?
+  startedByTelegramId BigInt
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  completedAt         DateTime?
+  groupChat           GroupChat          @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  participants        EventParticipant[]
+  squads              Squad[]
+  diceRolls           DiceRoll[]
+  combatSessions      CombatSession[]
+  rewards             Reward[]
+
+  @@index([groupChatId, status])
+  @@map("events")
+}
+
+model EventParticipant {
+  id           Int             @id @default(autoincrement())
+  eventId      Int
+  userId       Int
+  characterId  Int
+  mode         ParticipantMode @default(UNASSIGNED)
+  squadId      Int?
+  contribution Int             @default(0)
+  joinedAt     DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  event        Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character    Character       @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  squad        Squad?          @relation(fields: [squadId], references: [id], onDelete: SetNull)
+  squadMembers SquadMember[]
+
+  @@unique([eventId, userId])
+  @@index([userId, eventId])
+  @@map("event_participants")
+}
+
+model Squad {
+  id           Int                @id @default(autoincrement())
+  eventId      Int
+  name         String
+  status       SquadStatus        @default(OPEN)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  members      SquadMember[]
+  participants EventParticipant[]
+
+  @@index([eventId, status])
+  @@map("squads")
+}
+
+model SquadMember {
+  id            Int              @id @default(autoincrement())
+  squadId       Int
+  participantId Int              @unique
+  role          String?
+  joinedAt      DateTime         @default(now())
+  squad         Squad            @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  participant   EventParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([squadId, participantId])
+  @@map("squad_members")
+}
+
+model DiceRoll {
+  id             Int          @id @default(autoincrement())
+  eventId         Int?
+  userId          Int?
+  characterId     Int?
+  chatId          BigInt
+  messageId       Int?
+  context         String
+  rollType        DiceRollType @default(NORMAL)
+  value           Int
+  effectiveValue  Int
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  event           Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  character       Character?   @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, characterId])
+  @@map("dice_rolls")
+}
+
+model CombatSession {
+  id        Int             @id @default(autoincrement())
+  eventId   Int
+  status    CombatStatus    @default(ACTIVE)
+  enemyKey  String
+  round     Int             @default(1)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  event     Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  entities  CombatEntity[]
+
+  @@index([eventId, status])
+  @@map("combat_sessions")
+}
+
+model CombatEntity {
+  id              Int             @id @default(autoincrement())
+  combatSessionId Int
+  characterId     Int?
+  enemyKey        String?
+  name            String
+  side            CombatSide
+  hpCurrent       Int
+  hpMax           Int
+  manaCurrent     Int             @default(0)
+  staminaCurrent  Int             @default(0)
+  initiative      Int             @default(0)
+  status          String          @default("active")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  combatSession   CombatSession   @relation(fields: [combatSessionId], references: [id], onDelete: Cascade)
+  character       Character?      @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([combatSessionId, side])
+  @@map("combat_entities")
+}
+
+model Reward {
+  id          Int       @id @default(autoincrement())
+  eventId     Int
+  userId      Int
+  characterId Int?
+  xp          Int       @default(0)
+  coins       Int       @default(0)
+  eventPoints Int       @default(0)
+  iceShards   Int       @default(0)
+  title       String?
+  items       Json?
+  awardedAt   DateTime  @default(now())
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, userId])
+  @@map("rewards")
+}
+
+model AdminLog {
+  id                Int      @id @default(autoincrement())
+  adminTelegramId   BigInt
+  action            String
+  targetTelegramId  BigInt?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  @@index([adminTelegramId, action])
+  @@map("admin_logs")
+}
